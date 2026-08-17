@@ -1,0 +1,14 @@
+{
+  "targets": [
+    "bufIn",
+    "bufOut"
+  ],
+  "passes": [
+    {
+      "name": "skybox",
+      "intarget": "bufIn",
+      "outtarget": "bufOut",
+      "uniforms": []
+    }
+  ]
+}

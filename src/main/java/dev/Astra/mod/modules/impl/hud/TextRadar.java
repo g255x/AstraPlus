@@ -1,0 +1,237 @@
+/*
+ * Decompiled with CFR 0.152.
+ *
+ * Could not load the following classes:
+ *  net.minecraft.client.gui.DrawContext
+ *  net.minecraft.client.network.AbstractClientPlayerEntity
+ *  net.minecraft.entity.Entity
+ *  net.minecraft.entity.effect.StatusEffects
+ *  net.minecraft.entity.player.PlayerEntity
+ *  net.minecraft.util.Formatting
+ */
+package dev.Astra.mod.modules.impl.hud;
+
+import dev.Astra.Astra;
+import dev.Astra.core.impl.FontManager;
+import dev.Astra.mod.modules.HudModule;
+import dev.Astra.mod.modules.impl.client.ClickGui;
+import dev.Astra.mod.modules.settings.impl.BooleanSetting;
+import dev.Astra.mod.modules.settings.impl.SliderSetting;   // 修正：使用 SliderSetting
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.network.AbstractClientPlayerEntity;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.Formatting;
+
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Objects;
+
+public class TextRadar
+        extends HudModule {
+    public static TextRadar INSTANCE;
+    private final DecimalFormat df = new DecimalFormat("0.0");
+    private final SliderSetting limit = this.add(new SliderSetting("Limit", 10, 1, 50, 1));
+    private final BooleanSetting friend = this.add(new BooleanSetting("Friend", true));
+    private final BooleanSetting doubleBlank = this.add(new BooleanSetting("Double", false));
+    private final BooleanSetting health = this.add(new BooleanSetting("Health", true));
+    private final BooleanSetting pops = this.add(new BooleanSetting("Pops", true));
+    public final BooleanSetting red = this.add(new BooleanSetting("Red", false));
+    private final BooleanSetting getDistance = this.add(new BooleanSetting("Distance", true));
+    private final BooleanSetting effects = this.add(new BooleanSetting("Effects", true));
+
+    public TextRadar() {
+        super("TextRadar", "玩家雷达", 0, 100);
+        INSTANCE = this;
+    }
+
+    @Override
+    public void onRender2D(DrawContext drawContext, float tickDelta) {
+        if (TextRadar.mc.player == null || TextRadar.mc.world == null) {
+            this.clearHudBounds();
+            return;
+        }
+
+        int maxW = 0;
+        int lineH;
+        if (HudSetting.useFont()) {
+            lineH = (int)FontManager.ui.getFontHeight();
+        } else {
+            Objects.requireNonNull(TextRadar.mc.textRenderer);
+            lineH = 9;
+        }
+
+        ArrayList<String> linesText = new ArrayList<>();
+        ArrayList<Integer> linesColor = new ArrayList<>();
+
+        ArrayList<AbstractClientPlayerEntity> players = new ArrayList<AbstractClientPlayerEntity>(TextRadar.mc.world.getPlayers());
+        players.sort(Comparator.comparingDouble(player -> TextRadar.mc.player.distanceTo((Entity)player)));
+
+        double counter = 20.0;
+        int displayedCount = 0;
+        int maxPlayers = (int) this.limit.getValue();   // 获取上限值
+
+        for (PlayerEntity playerEntity : players) {
+            if (playerEntity == TextRadar.mc.player) {
+                continue;
+            }
+            // 达到上限则停止添加
+            if (displayedCount >= maxPlayers) {
+                break;
+            }
+
+            int color;
+            boolean isFriend;
+            int totemPopped;
+            String blank = this.doubleBlank.getValue() ? "  " : " ";
+            StringBuilder stringBuilder = new StringBuilder();
+
+            if (this.health.getValue()) {
+                stringBuilder.append(TextRadar.getHealthColor(playerEntity));
+                stringBuilder.append(this.df.format(playerEntity.getHealth() + playerEntity.getAbsorptionAmount()));
+                stringBuilder.append(blank);
+            }
+            stringBuilder.append(Formatting.RESET);
+            stringBuilder.append(playerEntity.getName().getString());
+            if (this.getDistance.getValue()) {
+                stringBuilder.append(blank);
+                stringBuilder.append(Formatting.WHITE);
+                stringBuilder.append(this.df.format(TextRadar.mc.player.distanceTo((Entity)playerEntity)));
+                stringBuilder.append("m");
+            }
+            if (this.effects.getValue()) {
+                if (playerEntity.hasStatusEffect(StatusEffects.SLOWNESS)) {
+                    stringBuilder.append(blank);
+                    stringBuilder.append(Formatting.GRAY);
+                    stringBuilder.append("Lv.");
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.SLOWNESS).getAmplifier() + 1);
+                    stringBuilder.append(blank);
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.SLOWNESS).getDuration() / 20 + 1);
+                    stringBuilder.append("s");
+                }
+                if (playerEntity.hasStatusEffect(StatusEffects.SPEED)) {
+                    stringBuilder.append(blank);
+                    stringBuilder.append(Formatting.AQUA);
+                    stringBuilder.append("Lv.");
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.SPEED).getAmplifier() + 1);
+                    stringBuilder.append(blank);
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.SPEED).getDuration() / 20 + 1);
+                    stringBuilder.append("s");
+                }
+                if (playerEntity.hasStatusEffect(StatusEffects.STRENGTH)) {
+                    stringBuilder.append(blank);
+                    stringBuilder.append(Formatting.DARK_RED);
+                    stringBuilder.append("Lv.");
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.STRENGTH).getAmplifier() + 1);
+                    stringBuilder.append(blank);
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.STRENGTH).getDuration() / 20 + 1);
+                    stringBuilder.append("s");
+                }
+                if (playerEntity.hasStatusEffect(StatusEffects.RESISTANCE)) {
+                    stringBuilder.append(blank);
+                    stringBuilder.append(Formatting.BLUE);
+                    stringBuilder.append("Lv.");
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.RESISTANCE).getAmplifier() + 1);
+                    stringBuilder.append(blank);
+                    stringBuilder.append(playerEntity.getStatusEffect(StatusEffects.RESISTANCE).getDuration() / 20 + 1);
+                    stringBuilder.append("s");
+                }
+            }
+            if (this.pops.getValue() && (totemPopped = Astra.POP.getPop(playerEntity)) > 0) {
+                stringBuilder.append(blank);
+                stringBuilder.append(TextRadar.getPopColor(totemPopped));
+                stringBuilder.append("-");
+                stringBuilder.append(totemPopped);
+            }
+            if ((isFriend = Astra.FRIEND.isFriend(playerEntity)) && !this.friend.getValue()) {
+                continue;
+            }
+
+            counter += 10.0;
+            color = isFriend ? this.getFriendColor(counter) : this.getHudColor(counter);
+            String s = stringBuilder.toString();
+            int w = HudSetting.useFont() ? (int)FontManager.ui.getWidth(s) : TextRadar.mc.textRenderer.getWidth(s);
+            maxW = Math.max(maxW, w);
+            linesText.add(s);
+            linesColor.add(color);
+            displayedCount++;   // 计数增加
+        }
+
+        if (linesText.isEmpty()) {
+            this.clearHudBounds();
+            return;
+        }
+
+        int totalH = Math.max(1, linesText.size() * lineH);
+        int startX = this.getHudRenderX(Math.max(1, maxW));
+        int startY = this.getHudRenderY(totalH);
+
+        int currentY = startY;
+        for (int i = 0; i < linesText.size(); ++i) {
+            String s = linesText.get(i);
+            int color = linesColor.get(i);
+            if (HudSetting.useFont()) {
+                FontManager.ui.drawString(drawContext.getMatrices(), s, (double)startX, (double)currentY, color, HudSetting.useShadow());
+            } else {
+                drawContext.drawText(TextRadar.mc.textRenderer, s, startX, currentY, color, HudSetting.useShadow());
+            }
+            currentY += lineH;
+        }
+
+        this.setHudBounds(startX, startY, Math.max(1, maxW), Math.max(1, totalH));
+    }
+
+    public static Formatting getHealthColor(PlayerEntity player) {
+        double health = player.getHealth() + player.getAbsorptionAmount();
+        if (health > 18.0) {
+            return Formatting.GREEN;
+        }
+        if (health > 16.0) {
+            return Formatting.DARK_GREEN;
+        }
+        if (health > 12.0) {
+            return Formatting.YELLOW;
+        }
+        if (health > 8.0) {
+            return Formatting.GOLD;
+        }
+        if (health > 4.0) {
+            return Formatting.RED;
+        }
+        return Formatting.DARK_RED;
+    }
+
+    private int getHudColor(double delay) {
+        ClickGui gui = ClickGui.getInstance();
+        return gui == null ? -1 : gui.getColor(delay).getRGB();
+    }
+
+    private int getFriendColor(double delay) {
+        ClickGui gui = ClickGui.getInstance();
+        return gui == null ? -1 : gui.getActiveColor(delay).getRGB();
+    }
+
+    public static Formatting getPopColor(int totems) {
+        if (TextRadar.INSTANCE.red.getValue()) {
+            return Formatting.RED;
+        }
+        if (totems > 10) {
+            return Formatting.DARK_RED;
+        }
+        if (totems > 8) {
+            return Formatting.RED;
+        }
+        if (totems > 6) {
+            return Formatting.GOLD;
+        }
+        if (totems > 4) {
+            return Formatting.YELLOW;
+        }
+        if (totems > 2) {
+            return Formatting.DARK_GREEN;
+        }
+        return Formatting.GREEN;
+    }
+}

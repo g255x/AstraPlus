@@ -1,0 +1,918 @@
+package dev.Astra.mod.gui.clickgui.pages;
+
+import dev.Astra.Astra;
+import dev.Astra.api.utils.Wrapper;
+import dev.Astra.api.utils.math.Animation;
+import dev.Astra.api.utils.math.Easing;
+import dev.Astra.api.utils.render.ColorUtil;
+import dev.Astra.api.utils.render.Render2DUtil;
+import dev.Astra.api.utils.render.TextUtil;
+import dev.Astra.core.impl.FontManager;
+import dev.Astra.mod.Mod;
+import dev.Astra.mod.gui.clickgui.ClickGuiFrame;
+import dev.Astra.mod.gui.clickgui.ClickGuiScreen;
+import dev.Astra.mod.gui.items.Component;
+import dev.Astra.mod.gui.items.buttons.ModuleButton;
+import dev.Astra.mod.gui.windows.WindowBase;
+import dev.Astra.mod.gui.windows.WindowsScreen;
+import dev.Astra.mod.modules.HudModule;
+import dev.Astra.mod.modules.Module;
+import dev.Astra.mod.modules.impl.client.ClickGui;
+import dev.Astra.mod.modules.impl.client.ClientSetting;
+import dev.Astra.mod.modules.impl.hud.HudSetting;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.util.InputUtil;
+import org.lwjgl.glfw.GLFW;
+
+import java.awt.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+
+public final class ClickGuiHudPage {
+    private final ClickGuiScreen host;
+    private Component hudComponent;
+    private boolean hudPosInit;
+    private float hudLocalX;
+    private float hudLocalY;
+    private HudModule elementDragging;
+    private int elementDragDx;
+    private int elementDragDy;
+    private boolean selecting;
+    private int selectStartX;
+    private int selectStartY;
+    private int selectEndX;
+    private int selectEndY;
+    private final ArrayList<HudModule> selectedHud = new ArrayList<>();
+    private boolean groupDragging;
+    private int groupDragStartMouseX;
+    private int groupDragStartMouseY;
+    private final ArrayList<GroupDragEntry> groupDragEntries = new ArrayList<>();
+    private boolean layoutMenuOpen;
+    private int layoutMenuX;
+    private int layoutMenuY;
+    private final Animation layoutButtonAnim = new Animation();
+    private final Animation layoutMenuAnim = new Animation();
+    private WindowBase editWindow;
+    private boolean editWindowHover;
+    private boolean editWindowPosInit;
+    private float editWindowLocalX;
+    private float editWindowLocalY;
+
+    private static final class GroupDragEntry {
+        private final HudModule module;
+        private final int startX;
+        private final int startY;
+
+        private GroupDragEntry(HudModule module, int startX, int startY) {
+            this.module = module;
+            this.startX = startX;
+            this.startY = startY;
+        }
+    }
+
+    public ClickGuiHudPage(ClickGuiScreen host) {
+        this.host = host;
+    }
+
+    public void init() {
+        this.initHudButtons();
+    }
+
+    public void openHudWindow(WindowBase window) {
+        this.editWindow = window;
+        if (this.editWindow != null) {
+            this.editWindow.setVisible(true);
+            this.editWindowPosInit = false;
+        }
+    }
+
+    public void resetHudLayout() {
+        this.hudPosInit = false;
+    }
+
+    public void mouseScrolled(double verticalAmount) {
+        if (Wrapper.mc == null || Wrapper.mc.getWindow() == null) {
+            return;
+        }
+        if (this.editWindow != null && this.editWindow.isVisible()) {
+            this.editWindow.mouseScrolled((int)verticalAmount);
+            if (this.editWindowHover) {
+                return;
+            }
+        }
+        if (this.hudComponent == null) {
+            return;
+        }
+        if (!this.hudPosInit) {
+            return;
+        }
+        if (InputUtil.isKeyPressed(Wrapper.mc.getWindow().getHandle(), GLFW.GLFW_KEY_LEFT_SHIFT)) {
+            if (verticalAmount < 0.0) {
+                this.hudLocalX -= 15.0f;
+            } else if (verticalAmount > 0.0) {
+                this.hudLocalX += 15.0f;
+            }
+        } else if (verticalAmount < 0.0) {
+            this.hudLocalY -= 15.0f;
+        } else if (verticalAmount > 0.0) {
+            this.hudLocalY += 15.0f;
+        }
+    }
+
+    public void mouseReleased(int mouseX, int mouseY, int releaseButton) {
+        if (this.editWindow != null && this.editWindow.isVisible()) {
+            this.editWindow.mouseReleased(mouseX, mouseY, releaseButton);
+        }
+        if (releaseButton == 0) {
+            this.elementDragging = null;
+            this.groupDragging = false;
+            this.groupDragEntries.clear();
+        }
+        if (this.hudComponent != null) {
+            this.hudComponent.mouseReleased(mouseX, mouseY, releaseButton);
+        }
+    }
+
+    public void keyPressed(int keyCode) {
+        if (this.editWindow != null && this.editWindow.isVisible()) {
+            this.editWindow.keyPressed(keyCode, 0, 0);
+            return;
+        }
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (this.layoutMenuOpen) {
+                this.closeLayoutMenu();
+                return;
+            }
+            if (!this.selectedHud.isEmpty()) {
+                this.clearSelection();
+                return;
+            }
+        }
+        if (!this.selectedHud.isEmpty()) {
+            if (keyCode == GLFW.GLFW_KEY_G) {
+                this.applyGridLayout();
+                return;
+            }
+            if (keyCode == GLFW.GLFW_KEY_H) {
+                this.applyHorizontalLayout();
+                return;
+            }
+            if (keyCode == GLFW.GLFW_KEY_V) {
+                this.applyVerticalLayout();
+                return;
+            }
+            if (keyCode == GLFW.GLFW_KEY_L) {
+                this.applyAlignLeft();
+                return;
+            }
+            if (keyCode == GLFW.GLFW_KEY_T) {
+                this.applyAlignTop();
+                return;
+            }
+        }
+        if (this.hudComponent != null) {
+            this.hudComponent.onKeyPressed(keyCode);
+        }
+    }
+
+    public void charTyped(char chr, int modifiers) {
+        if (this.editWindow != null && this.editWindow.isVisible()) {
+            this.editWindow.charTyped(chr, modifiers);
+            return;
+        }
+        if (this.hudComponent != null) {
+            this.hudComponent.onKeyTyped(chr, modifiers);
+        }
+    }
+
+    public void render(DrawContext context, int mouseX, int mouseY, float delta, ClickGuiFrame frame) {
+        ClickGui gui = ClickGui.getInstance();
+        if (gui == null) {
+            return;
+        }
+        if (this.editWindow != null && !this.editWindow.isVisible()) {
+            this.editWindow = null;
+            this.editWindowPosInit = false;
+        }
+        this.dragHudElements(mouseX, mouseY);
+        this.updateSelection(mouseX, mouseY);
+        float baseX = frame.baseX(ClickGuiScreen.Page.Hud);
+        float screenUnitW = frame.scale == 0.0f ? (float)frame.screenW : (float)frame.screenW / frame.scale;
+        float panelXf = Math.max(8.0f, (screenUnitW - (float)frame.panelW) / 2.0f);
+        float defaultLocalX = panelXf + 10.0f;
+        float defaultLocalY = (float)frame.panelY + 10.0f;
+        if (this.hudComponent == null) {
+            return;
+        }
+        this.hudComponent.setMouseMoveOffset(frame.totalOffsetX, frame.totalOffsetY);
+        this.hudComponent.setPageOffsetX(baseX);
+        if (!this.hudPosInit) {
+            this.hudLocalX = defaultLocalX;
+            this.hudLocalY = defaultLocalY;
+            this.hudComponent.setX((int)this.hudLocalX);
+            this.hudComponent.setY((int)this.hudLocalY);
+            this.hudPosInit = true;
+        }
+        if (this.hudComponent.drag) {
+            this.hudLocalX = (float)this.hudComponent.getX() - baseX - frame.totalOffsetX;
+            this.hudLocalY = (float)this.hudComponent.getY() - frame.totalOffsetY;
+        } else {
+            this.hudComponent.setX((int)this.hudLocalX);
+            this.hudComponent.setY((int)this.hudLocalY);
+        }
+        this.hudComponent.drawScreen(context, mouseX, mouseY, delta);
+        context.getMatrices().push();
+        context.getMatrices().translate(0.0f, 0.0f, 900.0f);
+        this.renderSelectionOverlay(context, frame, mouseX, mouseY);
+        this.renderLayoutMenu(context, frame, mouseX, mouseY);
+        context.getMatrices().pop();
+        if (this.editWindow != null && this.editWindow.isVisible()) {
+            int umx = (int)frame.unitMouseX(mouseX);
+            int umy = (int)frame.unitMouseY(mouseY);
+            context.getMatrices().push();
+            context.getMatrices().translate(0.0f, 0.0f, 1100.0f);
+            this.syncEditWindowPosition(frame);
+            this.editWindowHover = this.isWindowHover(this.editWindow, umx, umy);
+            this.editWindow.render(context, umx, umy);
+            this.updateEditWindowLocal(frame);
+            context.getMatrices().pop();
+        }
+    }
+
+    public boolean mouseClicked(int mouseX, int mouseY, int mouseButton, ClickGuiFrame frame) {
+        if (Wrapper.mc == null || Wrapper.mc.getWindow() == null) {
+            return false;
+        }
+        ClickGui gui = ClickGui.getInstance();
+        if (gui == null) {
+            return false;
+        }
+        if (this.editWindow != null && this.editWindow.isVisible()) {
+            this.syncEditWindowPosition(frame);
+            int umx = (int)frame.unitMouseX(mouseX);
+            int umy = (int)frame.unitMouseY(mouseY);
+            this.editWindow.mouseClicked(umx, umy, mouseButton);
+            if (this.isWindowHover(this.editWindow, umx, umy) || WindowsScreen.draggingWindow == this.editWindow) {
+                return true;
+            }
+        }
+        float mx = frame.unitMouseX(mouseX);
+        float my = frame.unitMouseY(mouseY);
+        if (this.isLayoutMenuVisible() && this.handleLayoutMenuClick(mouseX, mouseY, mouseButton, frame)) {
+            return true;
+        }
+        if (!this.selectedHud.isEmpty() && mouseButton == 0 && this.isHoveringLayoutButton(mx, my, frame)) {
+            this.openLayoutMenu(frame);
+            return true;
+        }
+        if (this.hudComponent != null && this.hudComponent.isMouseOver(mouseX, mouseY)) {
+            this.hudComponent.mouseClicked(mouseX, mouseY, mouseButton);
+            return true;
+        }
+        if (mouseButton == 0) {
+            if (this.tryBeginDragHudElement(mouseX, mouseY)) {
+                return true;
+            }
+            this.beginSelection(mouseX, mouseY);
+            return true;
+        }
+        if (mouseButton == 1 && !this.selectedHud.isEmpty()) {
+            this.openLayoutMenu(frame);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean isWindowHover(WindowBase window, int mouseX, int mouseY) {
+        return Render2DUtil.isHovered(mouseX, mouseY, window.getX(), window.getY(), window.getWidth(), window.getHeight());
+    }
+
+    private void syncEditWindowPosition(ClickGuiFrame frame) {
+        if (this.editWindow == null) {
+            return;
+        }
+        float baseX = frame.baseX(ClickGuiScreen.Page.Hud);
+        if (!this.editWindowPosInit) {
+            this.editWindowLocalX = this.editWindow.getX() - baseX - frame.totalOffsetX;
+            this.editWindowLocalY = this.editWindow.getY() - frame.totalOffsetY;
+            this.editWindowPosInit = true;
+        }
+        if (WindowsScreen.draggingWindow != this.editWindow) {
+            float x = baseX + this.editWindowLocalX + frame.totalOffsetX;
+            float y = this.editWindowLocalY + frame.totalOffsetY;
+            this.editWindow.setPosition(x, y);
+        }
+    }
+
+    private void updateEditWindowLocal(ClickGuiFrame frame) {
+        if (this.editWindow == null) {
+            return;
+        }
+        if (WindowsScreen.draggingWindow == this.editWindow) {
+            float baseX = frame.baseX(ClickGuiScreen.Page.Hud);
+            this.editWindowLocalX = this.editWindow.getX() - baseX - frame.totalOffsetX;
+            this.editWindowLocalY = this.editWindow.getY() - frame.totalOffsetY;
+        }
+    }
+
+    private void initHudButtons() {
+        ArrayList<Module> modules = new ArrayList<>();
+        for (Module m : Astra.MODULE.getModules()) {
+            if (!this.isHudComponentModule(m)) continue;
+            modules.add(m);
+        }
+        modules.sort(Comparator.comparingInt(ClickGuiHudPage::getHudListGroup)
+                .thenComparingInt(ClickGuiHudPage::getHudListPriority)
+                .thenComparing(Mod::getName));
+        this.hudComponent = new Component("HUD", Module.Category.Client, 100, 100, true);
+        for (Module m : modules) {
+            this.hudComponent.addButton(new ModuleButton(m));
+        }
+    }
+
+    private static int getHudListGroup(Mod m) {
+        String name = m.getName();
+        if (name.equals("HUDSetting") || name.equals("ArrayList") || name.equals("Coords") || name.equals("Info") || name.equals("WaterMark") || name.equals("Armor")) {
+            return 0;
+        }
+        if (name.startsWith("Items")) {
+            return 2;
+        }
+        return 1;
+    }
+
+    private static int getHudListPriority(Mod m) {
+        return switch (m.getName()) {
+            case "HUDSetting" -> -1;
+            case "ArrayList" -> 0;
+            case "Coords" -> 1;
+            case "Info" -> 2;
+            case "WaterMark" -> 3;
+            case "Armor" -> 4;
+            case "TextRadar" -> 5;
+            default -> 999;
+        };
+    }
+
+    private boolean isHudComponentModule(Module module) {
+        return module instanceof HudModule || module instanceof HudSetting;
+    }
+
+    private boolean tryBeginDragHudElement(int mouseX, int mouseY) {
+        if (this.hudComponent == null) return false;
+        for (ModuleButton b : this.hudComponent.getItems()) {
+            Module m = b.getModule();
+            if (!(m instanceof HudModule)) {
+                continue;
+            }
+            HudModule hm = (HudModule)m;
+            if (!hm.isOn()) {
+                continue;
+            }
+            if (!hm.isHudHit(mouseX, mouseY)) {
+                continue;
+            }
+            if (!this.selectedHud.isEmpty() && this.selectedHud.contains(hm)) {
+                this.beginGroupDrag(mouseX, mouseY);
+                return true;
+            }
+            this.groupDragging = false;
+            this.groupDragEntries.clear();
+            this.elementDragging = hm;
+            this.elementDragDx = mouseX - hm.getHudBoundX();
+            this.elementDragDy = mouseY - hm.getHudBoundY();
+            return true;
+        }
+        return false;
+    }
+
+    private void dragHudElements(int mouseX, int mouseY) {
+        if (!this.groupDragging && this.elementDragging == null) {
+            return;
+        }
+        if (Wrapper.mc == null || Wrapper.mc.getWindow() == null) {
+            this.elementDragging = null;
+            this.groupDragging = false;
+            this.groupDragEntries.clear();
+            return;
+        }
+        long handle = Wrapper.mc.getWindow().getHandle();
+        if (GLFW.glfwGetMouseButton(handle, 0) != 1) {
+            this.elementDragging = null;
+            this.groupDragging = false;
+            this.groupDragEntries.clear();
+            return;
+        }
+        if (this.groupDragging) {
+            int dx = mouseX - this.groupDragStartMouseX;
+            int dy = mouseY - this.groupDragStartMouseY;
+            for (GroupDragEntry e : this.groupDragEntries) {
+                e.module.setHudPosFromBounds(e.startX + dx, e.startY + dy);
+            }
+            return;
+        }
+        int nx = mouseX - this.elementDragDx;
+        int ny = mouseY - this.elementDragDy;
+        this.elementDragging.setHudPosFromBounds(nx, ny);
+    }
+
+    private void beginSelection(int mouseX, int mouseY) {
+        this.closeLayoutMenu();
+        this.selecting = true;
+        this.selectStartX = mouseX;
+        this.selectStartY = mouseY;
+        this.selectEndX = mouseX;
+        this.selectEndY = mouseY;
+        this.selectedHud.clear();
+        this.groupDragging = false;
+        this.groupDragEntries.clear();
+        this.elementDragging = null;
+        if (this.hudComponent != null) {
+            this.hudComponent.drag = false;
+        }
+    }
+
+    private void updateSelection(int mouseX, int mouseY) {
+        if (!this.selecting) {
+            return;
+        }
+        this.selectEndX = mouseX;
+        this.selectEndY = mouseY;
+        if (Wrapper.mc == null || Wrapper.mc.getWindow() == null) {
+            this.finishSelection();
+            return;
+        }
+        long handle = Wrapper.mc.getWindow().getHandle();
+        if (GLFW.glfwGetMouseButton(handle, 0) != 1) {
+            this.finishSelection();
+        }
+    }
+
+    private void beginGroupDrag(int mouseX, int mouseY) {
+        this.closeLayoutMenu();
+        this.groupDragging = true;
+        this.groupDragStartMouseX = mouseX;
+        this.groupDragStartMouseY = mouseY;
+        this.groupDragEntries.clear();
+        for (HudModule hm : this.selectedHud) {
+            if (!hm.isOn()) {
+                continue;
+            }
+            this.groupDragEntries.add(new GroupDragEntry(hm, hm.getHudBoundX(), hm.getHudBoundY()));
+        }
+        this.elementDragging = null;
+        if (this.hudComponent != null) {
+            this.hudComponent.drag = false;
+        }
+    }
+
+    private void finishSelection() {
+        if (!this.selecting) {
+            return;
+        }
+        this.selecting = false;
+        int x1 = this.selectStartX;
+        int y1 = this.selectStartY;
+        int x2 = this.selectEndX;
+        int y2 = this.selectEndY;
+        this.selectedHud.clear();
+        for (Module m : Astra.MODULE.getModules()) {
+            if (!(m instanceof HudModule)) {
+                continue;
+            }
+            HudModule hm = (HudModule)m;
+            if (!hm.isOn()) {
+                continue;
+            }
+            if (!hm.isHudOverlapping(x1, y1, x2, y2)) {
+                continue;
+            }
+            this.selectedHud.add(hm);
+        }
+    }
+
+    private void clearSelection() {
+        this.selecting = false;
+        this.selectedHud.clear();
+        this.closeLayoutMenu();
+    }
+
+    private void renderSelectionOverlay(DrawContext context, ClickGuiFrame frame, int mouseX, int mouseY) {
+        ClickGui gui = ClickGui.getInstance();
+        if (gui == null) {
+            return;
+        }
+        boolean customFont = FontManager.isCustomFontEnabled();
+        boolean shadow = FontManager.isShadowEnabled();
+        boolean chinese = ClientSetting.INSTANCE != null && ClientSetting.INSTANCE.chinese.getValue();
+        if (this.selecting) {
+            int x1 = this.selectStartX;
+            int y1 = this.selectStartY;
+            int x2 = this.selectEndX;
+            int y2 = this.selectEndY;
+            float rx = Math.min(frame.unitMouseX(x1), frame.unitMouseX(x2));
+            float ry = Math.min(frame.unitMouseY(y1), frame.unitMouseY(y2));
+            float rw = Math.abs(frame.unitMouseX(x2) - frame.unitMouseX(x1));
+            float rh = Math.abs(frame.unitMouseY(y2) - frame.unitMouseY(y1));
+            Color fill = ColorUtil.injectAlpha(gui.hoverColor.getValue(), 36);
+            Color outline = ColorUtil.injectAlpha(gui.hoverColor.getValue(), 170);
+            Render2DUtil.drawRectWithOutline(context.getMatrices(), rx, ry, rw, rh, fill, outline);
+        }
+
+        double btnP = this.layoutButtonAnim.get(this.selectedHud.isEmpty() ? 0.0 : 1.0, 160L, Easing.CubicInOut);
+        float btnProgress = (float)btnP;
+        if (btnProgress < 0.01f && this.selectedHud.isEmpty()) {
+            return;
+        }
+
+        Color outline = ColorUtil.injectAlpha(gui.hoverColor.getValue(), (int)Math.round(210.0 * (double)btnProgress));
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        for (HudModule hm : this.selectedHud) {
+            int bw = hm.getHudBoundW();
+            int bh = hm.getHudBoundH();
+            if (bw <= 0 || bh <= 0) {
+                continue;
+            }
+            int bx = hm.getHudBoundX();
+            int by = hm.getHudBoundY();
+            minX = Math.min(minX, bx);
+            minY = Math.min(minY, by);
+            float ux = frame.unitMouseX(bx);
+            float uy = frame.unitMouseY(by);
+            float uw = frame.unitMouseX(bx + bw) - frame.unitMouseX(bx);
+            float uh = frame.unitMouseY(by + bh) - frame.unitMouseY(by);
+            Render2DUtil.drawRectWithOutline(context.getMatrices(), ux, uy, uw, uh, new Color(0, 0, 0, 0), outline);
+        }
+
+        if (minX == Integer.MAX_VALUE) {
+            return;
+        }
+
+        String label = chinese ? "布局" : "Layout";
+        float tw = customFont ? (float)FontManager.ui.getWidth(label) : TextUtil.getWidth(label);
+        float th = customFont ? FontManager.ui.getFontHeight() : TextUtil.getHeight();
+        float pad = 4.0f;
+        float bw = tw + pad * 2.0f;
+        float bh = th + 4.0f;
+        float bx = frame.unitMouseX(minX);
+        float by = frame.unitMouseY(minY) - bh - 2.0f;
+        float maxH = frame.scale == 0.0f ? (float)frame.screenH : ((float)frame.screenH - frame.slideY) / frame.scale;
+        if (by < 1.0f) {
+            by = 1.0f;
+        }
+        if (by + bh > maxH - 1.0f) {
+            by = maxH - bh - 1.0f;
+        }
+
+        float btnScale = 0.85f + 0.15f * btnProgress;
+        float cx = bx + bw / 2.0f;
+        float cy = by + bh / 2.0f;
+        context.getMatrices().push();
+        context.getMatrices().translate(cx, cy, 0.0f);
+        context.getMatrices().scale(btnScale, btnScale, 1.0f);
+        context.getMatrices().translate(-cx, -cy, 0.0f);
+
+        int bgA = Math.max(0, Math.min(255, (int)Math.round(240.0 * (double)btnProgress)));
+        int outA = Math.max(0, Math.min(255, (int)Math.round(200.0 * (double)btnProgress)));
+        Color bg = ColorUtil.injectAlpha(gui.defaultColor.getValue(), bgA);
+        Color out = ColorUtil.injectAlpha(gui.hoverColor.getValue(), outA);
+        Render2DUtil.drawRectWithOutline(context.getMatrices(), bx, by, bw, bh, bg, out);
+        int textA = Math.max(0, Math.min(255, (int)Math.round((double)gui.enableTextColor.getValue().getAlpha() * (double)btnProgress)));
+        int textColor = ColorUtil.injectAlpha(gui.enableTextColor.getValue(), textA).getRGB();
+        TextUtil.drawString(context, label, (double)(bx + pad), (double)(by + 2.0f), textColor, customFont, shadow);
+        context.getMatrices().pop();
+    }
+
+    private void openLayoutMenu(ClickGuiFrame frame) {
+        this.layoutMenuOpen = true;
+        if (this.selectedHud.isEmpty()) {
+            this.layoutMenuX = 0;
+            this.layoutMenuY = 0;
+            return;
+        }
+        boolean customFont = FontManager.isCustomFontEnabled();
+        boolean chinese = ClientSetting.INSTANCE != null && ClientSetting.INSTANCE.chinese.getValue();
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        for (HudModule hm : this.selectedHud) {
+            int bw = hm.getHudBoundW();
+            int bh = hm.getHudBoundH();
+            if (bw <= 0 || bh <= 0) {
+                continue;
+            }
+            minX = Math.min(minX, hm.getHudBoundX());
+            minY = Math.min(minY, hm.getHudBoundY());
+        }
+        if (minX == Integer.MAX_VALUE) {
+            this.layoutMenuX = 0;
+            this.layoutMenuY = 0;
+            return;
+        }
+        String label = chinese ? "布局" : "Layout";
+        float tw = customFont ? (float)FontManager.ui.getWidth(label) : TextUtil.getWidth(label);
+        float th = customFont ? FontManager.ui.getFontHeight() : TextUtil.getHeight();
+        float pad = 4.0f;
+        float btnW = tw + pad * 2.0f;
+        float btnH = th + 4.0f;
+        float btnX = frame.unitMouseX(minX);
+        float btnY = frame.unitMouseY(minY) - btnH - 2.0f;
+        float maxH = frame.scale == 0.0f ? (float)frame.screenH : ((float)frame.screenH - frame.slideY) / frame.scale;
+        if (btnY < 1.0f) {
+            btnY = 1.0f;
+        }
+        if (btnY + btnH > maxH - 1.0f) {
+            btnY = maxH - btnH - 1.0f;
+        }
+        float anchorX = btnX + btnW;
+        float anchorY = btnY;
+        this.layoutMenuX = Math.round(frame.scale == 0.0f ? anchorX : anchorX * frame.scale);
+        this.layoutMenuY = Math.round(frame.scale == 0.0f ? anchorY : anchorY * frame.scale + frame.slideY);
+    }
+
+    private void closeLayoutMenu() {
+        this.layoutMenuOpen = false;
+    }
+
+    private boolean isHoveringLayoutButton(float mx, float my, ClickGuiFrame frame) {
+        if (this.selectedHud.isEmpty()) {
+            return false;
+        }
+        boolean customFont = FontManager.isCustomFontEnabled();
+        boolean chinese = ClientSetting.INSTANCE != null && ClientSetting.INSTANCE.chinese.getValue();
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        for (HudModule hm : this.selectedHud) {
+            int bw = hm.getHudBoundW();
+            int bh = hm.getHudBoundH();
+            if (bw <= 0 || bh <= 0) {
+                continue;
+            }
+            minX = Math.min(minX, hm.getHudBoundX());
+            minY = Math.min(minY, hm.getHudBoundY());
+        }
+        if (minX == Integer.MAX_VALUE) {
+            return false;
+        }
+        String label = chinese ? "布局" : "Layout";
+        float tw = customFont ? (float)FontManager.ui.getWidth(label) : TextUtil.getWidth(label);
+        float th = customFont ? FontManager.ui.getFontHeight() : TextUtil.getHeight();
+        float pad = 4.0f;
+        float bw = tw + pad * 2.0f;
+        float bh = th + 4.0f;
+        float bx = frame.unitMouseX(minX);
+        float by = frame.unitMouseY(minY) - bh - 2.0f;
+        float maxH = frame.scale == 0.0f ? (float)frame.screenH : ((float)frame.screenH - frame.slideY) / frame.scale;
+        if (by < 1.0f) {
+            by = 1.0f;
+        }
+        if (by + bh > maxH - 1.0f) {
+            by = maxH - bh - 1.0f;
+        }
+        return mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+    }
+
+    private String[] getLayoutMenuLabels(boolean chinese) {
+        if (chinese) {
+            return new String[]{"网格 (G)", "水平 (H)", "垂直 (V)"};
+        }
+        return new String[]{"Grid (G)", "Horizontal (H)", "Vertical (V)"};
+    }
+
+    private boolean isLayoutMenuVisible() {
+        if (!this.layoutMenuOpen && this.selectedHud.isEmpty()) {
+            return false;
+        }
+        double p = this.layoutMenuAnim.get(this.layoutMenuOpen ? 1.0 : 0.0, 160L, Easing.CubicInOut);
+        return p > 0.01;
+    }
+
+    private boolean handleLayoutMenuClick(int mouseX, int mouseY, int mouseButton, ClickGuiFrame frame) {
+        double p = this.layoutMenuAnim.get(this.layoutMenuOpen ? 1.0 : 0.0, 160L, Easing.CubicInOut);
+        if (p <= 0.01 || this.selectedHud.isEmpty()) {
+            return false;
+        }
+        ClickGui gui = ClickGui.getInstance();
+        if (gui == null) {
+            this.closeLayoutMenu();
+            return false;
+        }
+        boolean customFont = FontManager.isCustomFontEnabled();
+        boolean shadow = FontManager.isShadowEnabled();
+        boolean chinese = ClientSetting.INSTANCE != null && ClientSetting.INSTANCE.chinese.getValue();
+        String[] labels = this.getLayoutMenuLabels(chinese);
+        float mx = frame.unitMouseX(mouseX);
+        float my = frame.unitMouseY(mouseY);
+        float x = frame.unitMouseX(this.layoutMenuX);
+        float y = frame.unitMouseY(this.layoutMenuY);
+        float textH = customFont ? FontManager.ui.getFontHeight() : TextUtil.getHeight();
+        float rowH = textH + 6.0f;
+        float pad = 6.0f;
+        float maxW = 0.0f;
+        for (String s : labels) {
+            float w = customFont ? (float)FontManager.ui.getWidth(s) : TextUtil.getWidth(s);
+            if (w > maxW) {
+                maxW = w;
+            }
+        }
+        float menuW = maxW + pad * 2.0f;
+        float menuH = rowH * (float)labels.length + pad * 2.0f;
+        float progress = (float)p;
+        float menuScale = 0.85f + 0.15f * progress;
+        float scaledW = menuW * menuScale;
+        float scaledH = menuH * menuScale;
+        boolean inside = mx >= x && mx <= x + scaledW && my >= y && my <= y + scaledH;
+        if (!inside) {
+            if (mouseButton == 0) {
+                this.closeLayoutMenu();
+                return false;
+            }
+            this.closeLayoutMenu();
+            return true;
+        }
+        if (mouseButton != 0) {
+            return true;
+        }
+        float u = (mx - x) / Math.max(0.0001f, menuScale);
+        float v = (my - y) / Math.max(0.0001f, menuScale);
+        int idx = (int)Math.floor((double)((v - pad) / rowH));
+        if (idx < 0 || idx >= labels.length) {
+            return true;
+        }
+        if (idx == 0) {
+            this.applyGridLayout();
+        } else if (idx == 1) {
+            this.applyHorizontalLayout();
+        } else if (idx == 2) {
+            this.applyVerticalLayout();
+        }
+        this.closeLayoutMenu();
+        return true;
+    }
+
+    private void renderLayoutMenu(DrawContext context, ClickGuiFrame frame, int mouseX, int mouseY) {
+        double p = this.layoutMenuAnim.get(this.layoutMenuOpen ? 1.0 : 0.0, 160L, Easing.CubicInOut);
+        float progress = (float)p;
+        if (progress <= 0.01f || this.selectedHud.isEmpty()) {
+            return;
+        }
+        ClickGui gui = ClickGui.getInstance();
+        if (gui == null) {
+            this.closeLayoutMenu();
+            return;
+        }
+        boolean customFont = FontManager.isCustomFontEnabled();
+        boolean shadow = FontManager.isShadowEnabled();
+        boolean chinese = ClientSetting.INSTANCE != null && ClientSetting.INSTANCE.chinese.getValue();
+        String[] labels = this.getLayoutMenuLabels(chinese);
+        float x = frame.unitMouseX(this.layoutMenuX);
+        float y = frame.unitMouseY(this.layoutMenuY);
+        float textH = customFont ? FontManager.ui.getFontHeight() : TextUtil.getHeight();
+        float rowH = textH + 6.0f;
+        float pad = 6.0f;
+        float maxW = 0.0f;
+        for (String s : labels) {
+            float w = customFont ? (float)FontManager.ui.getWidth(s) : TextUtil.getWidth(s);
+            if (w > maxW) {
+                maxW = w;
+            }
+        }
+        float menuW = maxW + pad * 2.0f;
+        float menuH = rowH * (float)labels.length + pad * 2.0f;
+        float maxWUnit = frame.scale == 0.0f ? (float)frame.screenW : (float)frame.screenW / frame.scale;
+        float maxHUnit = frame.scale == 0.0f ? (float)frame.screenH : ((float)frame.screenH - frame.slideY) / frame.scale;
+        if (x + menuW > maxWUnit - 2.0f) {
+            x = maxWUnit - menuW - 2.0f;
+        }
+        if (y + menuH > maxHUnit - 2.0f) {
+            y = maxHUnit - menuH - 2.0f;
+        }
+        if (x < 2.0f) {
+            x = 2.0f;
+        }
+        if (y < 2.0f) {
+            y = 2.0f;
+        }
+        float cx = x + menuW / 2.0f;
+        float cy = y + menuH / 2.0f;
+        float menuScale = 0.85f + 0.15f * progress;
+        context.getMatrices().push();
+        context.getMatrices().translate(cx, cy, 0.0f);
+        context.getMatrices().scale(menuScale, menuScale, 1.0f);
+        context.getMatrices().translate(-cx, -cy, 0.0f);
+
+        int bgA = Math.max(0, Math.min(255, (int)Math.round(245.0 * (double)progress)));
+        int outA = Math.max(0, Math.min(255, (int)Math.round(210.0 * (double)progress)));
+        Color bg = ColorUtil.injectAlpha(gui.defaultColor.getValue(), bgA);
+        Color out = ColorUtil.injectAlpha(gui.hoverColor.getValue(), outA);
+        Render2DUtil.drawRectWithOutline(context.getMatrices(), x, y, menuW, menuH, bg, out);
+
+        float mx = frame.unitMouseX(mouseX);
+        float my = frame.unitMouseY(mouseY);
+        float localMx = x + (mx - x) / Math.max(0.0001f, menuScale);
+        float localMy = y + (my - y) / Math.max(0.0001f, menuScale);
+        int textA = Math.max(0, Math.min(255, (int)Math.round((double)gui.enableTextColor.getValue().getAlpha() * (double)progress)));
+        int textColor = ColorUtil.injectAlpha(gui.enableTextColor.getValue(), textA).getRGB();
+        for (int i = 0; i < labels.length; ++i) {
+            float ry = y + pad + (float)i * rowH;
+            boolean hovered = localMx >= x && localMx <= x + menuW && localMy >= ry && localMy <= ry + rowH;
+            if (hovered) {
+                Render2DUtil.drawRect(context.getMatrices(), x + 1.0f, ry, menuW - 2.0f, rowH, ColorUtil.injectAlpha(gui.hoverColor.getValue(), Math.max(0, Math.min(255, (int)Math.round(160.0 * (double)progress)))));
+            }
+            TextUtil.drawString(context, labels[i], (double)(x + pad), (double)(ry + 2.0f), textColor, customFont, shadow);
+        }
+        context.getMatrices().pop();
+    }
+
+    private void applyGridLayout() {
+        if (this.selectedHud.isEmpty()) {
+            return;
+        }
+        this.selectedHud.sort(Comparator.comparingInt(HudModule::getHudBoundY).thenComparingInt(HudModule::getHudBoundX));
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int maxW = 0;
+        int maxH = 0;
+        for (HudModule hm : this.selectedHud) {
+            minX = Math.min(minX, hm.getHudBoundX());
+            minY = Math.min(minY, hm.getHudBoundY());
+            maxW = Math.max(maxW, Math.max(1, hm.getHudBoundW()));
+            maxH = Math.max(maxH, Math.max(1, hm.getHudBoundH()));
+        }
+        int pad = 2;
+        int cellW = maxW + pad;
+        int cellH = maxH + pad;
+        int n = this.selectedHud.size();
+        int cols = (int)Math.ceil(Math.sqrt((double)n));
+        cols = Math.max(1, cols);
+        for (int i = 0; i < n; ++i) {
+            int col = i % cols;
+            int row = i / cols;
+            int x = minX + col * cellW;
+            int y = minY + row * cellH;
+            this.selectedHud.get(i).setHudPosFromBounds(x, y);
+        }
+    }
+
+    private void applyHorizontalLayout() {
+        if (this.selectedHud.isEmpty()) {
+            return;
+        }
+        this.selectedHud.sort(Comparator.comparingInt(HudModule::getHudBoundX));
+        int minY = Integer.MAX_VALUE;
+        for (HudModule hm : this.selectedHud) {
+            minY = Math.min(minY, hm.getHudBoundY());
+        }
+        int pad = 2;
+        int x = this.selectedHud.get(0).getHudBoundX();
+        for (HudModule hm : this.selectedHud) {
+            hm.setHudPosFromBounds(x, minY);
+            int w = Math.max(1, hm.getHudBoundW());
+            x += w + pad;
+        }
+    }
+
+    private void applyVerticalLayout() {
+        if (this.selectedHud.isEmpty()) {
+            return;
+        }
+        this.selectedHud.sort(Comparator.comparingInt(HudModule::getHudBoundY));
+        int minX = Integer.MAX_VALUE;
+        for (HudModule hm : this.selectedHud) {
+            minX = Math.min(minX, hm.getHudBoundX());
+        }
+        int pad = 2;
+        int y = this.selectedHud.get(0).getHudBoundY();
+        for (HudModule hm : this.selectedHud) {
+            hm.setHudPosFromBounds(minX, y);
+            int h = Math.max(1, hm.getHudBoundH());
+            y += h + pad;
+        }
+    }
+
+    private void applyAlignLeft() {
+        if (this.selectedHud.isEmpty()) {
+            return;
+        }
+        int minX = Integer.MAX_VALUE;
+        for (HudModule hm : this.selectedHud) {
+            minX = Math.min(minX, hm.getHudBoundX());
+        }
+        for (HudModule hm : this.selectedHud) {
+            hm.setHudPosFromBounds(minX, hm.getHudBoundY());
+        }
+    }
+
+    private void applyAlignTop() {
+        if (this.selectedHud.isEmpty()) {
+            return;
+        }
+        int minY = Integer.MAX_VALUE;
+        for (HudModule hm : this.selectedHud) {
+            minY = Math.min(minY, hm.getHudBoundY());
+        }
+        for (HudModule hm : this.selectedHud) {
+            hm.setHudPosFromBounds(hm.getHudBoundX(), minY);
+        }
+    }
+}
