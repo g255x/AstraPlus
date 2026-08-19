@@ -1,0 +1,174 @@
+/*
+ * Decompiled with CFR 0.152.
+ *
+ * Could not load the following classes:
+ *  net.minecraft.client.util.math.MatrixStack
+ */
+package dev.Astra.core.impl;
+
+import dev.Astra.mod.gui.fonts.FontRenderer;
+import dev.Astra.mod.modules.impl.client.Fonts;
+import net.minecraft.client.util.math.MatrixStack;
+
+import java.awt.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Objects;
+
+public class FontManager {
+    public static FontRenderer ui;
+    public static FontRenderer small;
+    public static FontRenderer icon;
+
+    private static void safeClose(FontRenderer renderer) {
+        if (renderer != null) {
+            try { renderer.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    private static void safeCloseStream(InputStream stream) {
+        if (stream != null) {
+            try { stream.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    public static boolean isCustomFontEnabled() {
+        return Fonts.INSTANCE != null && Fonts.INSTANCE.isOn();
+    }
+
+    public static boolean isShadowEnabled() {
+        return Fonts.INSTANCE == null || Fonts.INSTANCE.shadow.getValue();
+    }
+
+    public static void init() {
+        try {
+            safeClose(ui);
+            safeClose(small);
+            safeClose(icon);
+            ui = FontManager.assets(8.0f, "default", 0);
+            small = FontManager.assets(6.0f, "default", 0);
+            icon = FontManager.assetsWithoutOffset(8.0f, "icon", 0);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static FontRenderer assets(float size, String font, int style, String alternate) throws IOException, FontFormatException {
+        ClassLoader classLoader = FontManager.class.getClassLoader();
+        InputStream primary = classLoader.getResourceAsStream("assets/frogclient/font/" + font + ".ttf");
+        InputStream fallback = classLoader.getResourceAsStream("assets/minecraft/font/font.ttf");
+        InputStream stream = primary != null ? primary : fallback;
+        FontRenderer fr = new FontRenderer(Font.createFont(0, Objects.requireNonNull(stream)).deriveFont(style, size), FontManager.getFont(alternate, style, (int)size), size){
+
+            @Override
+            public void drawString(MatrixStack stack, String s, float x, float y, float r, float g, float elementCodec, float keyCodec, boolean shadow) {
+                float dx = 0.0f;
+                float dy = 0.0f;
+                if (FontManager.isCustomFontEnabled()) {
+                    dx = (float)Fonts.INSTANCE.translate.getValueInt();
+                    dy = (float)Fonts.INSTANCE.shift.getValueInt();
+                }
+                super.drawString(stack, s, x + dx, y + dy, r, g, elementCodec, keyCodec, shadow);
+            }
+        };
+        safeCloseStream(primary);
+        safeCloseStream(fallback);
+        return fr;
+    }
+
+    public static FontRenderer assetsWithoutOffset(float size, String name, int style) throws IOException, FontFormatException {
+        ClassLoader classLoader = FontManager.class.getClassLoader();
+        InputStream primary = classLoader.getResourceAsStream("assets/frog/astra.icon/" + name + ".ttf");
+        InputStream fallback = classLoader.getResourceAsStream("assets/minecraft/font/font.ttf");
+        InputStream stream = primary != null ? primary : fallback;
+        FontRenderer fr = new FontRenderer(Font.createFont(0, Objects.requireNonNull(stream)).deriveFont(style, size), size);
+        safeCloseStream(primary);
+        safeCloseStream(fallback);
+        return fr;
+    }
+
+    public static FontRenderer assets(float size, String name, int style) throws IOException, FontFormatException {
+        ClassLoader classLoader = FontManager.class.getClassLoader();
+        InputStream primary = classLoader.getResourceAsStream("assets/frogclient/font/" + name + ".ttf");
+        InputStream fallback = classLoader.getResourceAsStream("assets/minecraft/font/font.ttf");
+        InputStream stream = primary != null ? primary : fallback;
+        FontRenderer fr = new FontRenderer(Font.createFont(0, Objects.requireNonNull(stream)).deriveFont(style, size), size){
+
+            @Override
+            public void drawString(MatrixStack stack, String s, float x, float y, float r, float g, float elementCodec, float keyCodec, boolean shadow) {
+                float dx = 0.0f;
+                float dy = 0.0f;
+                if (FontManager.isCustomFontEnabled()) {
+                    dx = (float)Fonts.INSTANCE.translate.getValueInt();
+                    dy = (float)Fonts.INSTANCE.shift.getValueInt();
+                }
+                super.drawString(stack, s, x + dx, y + dy, r, g, elementCodec, keyCodec, shadow);
+            }
+        };
+        safeCloseStream(primary);
+        safeCloseStream(fallback);
+        return fr;
+    }
+
+    public static FontRenderer create(int size, String font, int style, String alternate) {
+        return new FontRenderer(FontManager.getFont(font, style, size), FontManager.getFont(alternate, style, size), size){
+
+            @Override
+            public void drawString(MatrixStack stack, String s, float x, float y, float r, float g, float elementCodec, float keyCodec, boolean shadow) {
+                float dx = 0.0f;
+                float dy = 0.0f;
+                if (FontManager.isCustomFontEnabled()) {
+                    dx = (float)Fonts.INSTANCE.translate.getValueInt();
+                    dy = (float)Fonts.INSTANCE.shift.getValueInt();
+                }
+                super.drawString(stack, s, x + dx, y + dy, r, g, elementCodec, keyCodec, shadow);
+            }
+        };
+    }
+
+    public static FontRenderer create(int size, String font, int style) {
+        return new FontRenderer(FontManager.getFont(font, style, size), size){
+
+            @Override
+            public void drawString(MatrixStack stack, String s, float x, float y, float r, float g, float elementCodec, float keyCodec, boolean shadow) {
+                float dx = 0.0f;
+                float dy = 0.0f;
+                if (FontManager.isCustomFontEnabled()) {
+                    dx = (float)Fonts.INSTANCE.translate.getValueInt();
+                    dy = (float)Fonts.INSTANCE.shift.getValueInt();
+                }
+                super.drawString(stack, s, x + dx, y + dy, r, g, elementCodec, keyCodec, shadow);
+            }
+        };
+    }
+
+    private static Font getFont(String font, int style, int size) {
+        File fontDir = new File("C:\\Windows\\Fonts");
+        try {
+            for (File file : fontDir.listFiles()) {
+                if (!file.getName().replace(".ttf", "").replace(".ttc", "").replace(".otf", "").equalsIgnoreCase(font)) continue;
+                try {
+                    return Font.createFont(0, file).deriveFont(style, size);
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            for (File file : fontDir.listFiles()) {
+                if (!file.getName().startsWith(font)) continue;
+                try {
+                    return Font.createFont(0, file).deriveFont(style, size);
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        catch (Exception exception) {
+            // empty catch block
+        }
+        return new Font(null, style, size);
+    }
+}

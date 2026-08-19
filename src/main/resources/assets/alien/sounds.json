@@ -1,0 +1,22 @@
+{
+  "killeffect.kill1": {
+    "subtitle": "Kill 1",
+    "sounds": ["alien:killeffect/kill1"]
+  },
+  "killeffect.kill2": {
+    "subtitle": "Kill 2",
+    "sounds": ["alien:killeffect/kill2"]
+  },
+  "killeffect.kill3": {
+    "subtitle": "Kill 3",
+    "sounds": ["alien:killeffect/kill3"]
+  },
+  "killeffect.kill4": {
+    "subtitle": "Kill 4",
+    "sounds": ["alien:killeffect/kill4"]
+  },
+  "killeffect.kill5": {
+    "subtitle": "Kill 5",
+    "sounds": ["alien:killeffect/kill5"]
+  }
+}

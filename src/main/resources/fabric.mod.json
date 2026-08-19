@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "astra",
+  "version": "${version}",
+  "name": "Astra Client",
+  "description": "Astra Client(_Kushen_写的公益客户端，如果你是付费获取的，那么你被骗了)",
+  "authors": [
+    "_Kushen_"
+  ],
+  "accessWidener": "astra.accesswidener",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.Astra.Astra"
+    ]
+  },
+  "mixins": [
+    "astra.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "1.21.1",
+    "java": ">=17"
+  },
+  "suggests": {
+    "another-mod": "*"
+  }
+}
